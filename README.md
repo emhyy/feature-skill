@@ -2,7 +2,7 @@
 
 An agent skill that takes a feature from a one-line request to a reviewed, tested pull request. It works in **Claude Code**, **Codex** and **Antigravity**.
 
-You describe the feature. The agent plans it, waits for your approval, builds it on a new branch, writes tests, opens a pull request, has two independent reviewers go over the code, fixes what they find, pushes, shows you the result, and archives the plan and implementation notes in your project's `docs/` folder.
+You describe the feature. The agent plans it, waits for your approval, builds it on a new branch, writes tests, opens a pull request, has independent reviewers go over the code (security and quality), fixes what they find, pushes, shows you the result, and archives the plan and implementation notes in your project's `docs/` folder.
 
 ```
 describe feature
@@ -23,7 +23,8 @@ describe feature
    5. Review loop, up to 3 rounds
         ├─ Reviewer A: security
         └─ Reviewer B: bugs, requirements, quality
-        fix findings ──► re-test ──► review again
+        (small, non-security changes: one reviewer does both)
+        fix findings ──► re-test affected code ──► review the fixes
       │
       ▼
    6. Write docs/ archive ──► final test run ──► push ──► PR ready
@@ -210,18 +211,34 @@ The agent does not write any code until you approve.
 
 ### The review loop
 
-Each round runs two reviews of the branch's diff, each written from the point of view of a senior engineer who did not write the code:
+The reviews are written from the point of view of a senior engineer who did not write the code:
 
 | Reviewer | Looks for |
 |---|---|
 | **A - Security** | injection, missing authorization, exposed secrets, unsafe input handling, risky dependencies, insecure defaults |
 | **B - Correctness and quality** | bugs, unhandled edge cases, whether every acceptance criterion in the plan is met, error handling, test coverage, maintainability |
 
-Findings are rated Critical, High, Medium or Low. The agent checks each finding, fixes every confirmed Critical, High and Medium one, reruns the tests, and starts another round so the fixes get reviewed too.
+**Round 1 reviews the whole branch diff.** How many reviewers run depends on the change:
+
+- **One reviewer** that applies both checklists, when under about 200 lines of production code changed (plan, tests, lock files and generated files are not counted) **and** nothing security-sensitive is touched: authentication, authorization or per-user data access, outside input, rendering user content and redirects, file system, network, shell or database access, secrets, logging and user-facing errors, cryptography or sessions, dependencies, security-related configuration.
+- **Two reviewers** in every other case, and whenever the agent is unsure.
+
+Findings are rated Critical, High, Medium or Low. The agent checks each finding, fixes every confirmed Critical, High and Medium one, runs the tests that cover the changed code, and starts another round so the fixes get reviewed too.
+
+**Rounds 2 and 3 review only the fixes**, not the whole branch again:
+
+- The reviewer gets the diff since the last reviewed commit plus the previous findings, and may read every file that diff touches in full, so it can catch a fix that clashes with the code around it.
+- The security reviewer runs again if it had confirmed findings or the fix touches security-sensitive code. The quality reviewer runs again if it had confirmed findings or the fix changes any production code, so every code fix gets a correctness review.
+- A reviewer that joins for the first time (for example the security reviewer, once a fix touches security-sensitive code) reviews the whole branch, not just the fix.
+- Between rounds the agent runs the tests for the changed files and their direct callers, or the full suite when it cannot tell which tests apply.
 
 The loop ends when a round finds nothing at Medium or above. It runs **at most 3 rounds**. If problems remain after the third, the agent stops and lists them for you.
 
-In tools that support sub-agents, the two reviewers run in parallel with a fresh context each, so they see the code without the author's assumptions. Where sub-agents are not available, the agent performs the two reviews one after the other, re-reading the diff from scratch each time.
+The full test suite runs again before the final push. If that run needs a code fix, the fix goes through one more review round (counted toward the limit of 3) before it is pushed.
+
+In tools that support sub-agents, each reviewer runs with a fresh context (two reviewers run in parallel), so they see the code without the author's assumptions. Where sub-agents are not available, the agent performs the reviews itself, one after the other, re-reading that round's diff from scratch each time.
+
+These rules keep token use down: reviewers never re-read code that was already reviewed and has not changed, and small changes need only one reviewer.
 
 ### When the agent stops and waits for you
 
@@ -265,6 +282,7 @@ The skill is plain Markdown. Edit the files in `feature/`, then run `./install.s
 | To change | Edit |
 |---|---|
 | Number of review rounds | `feature/SKILL.md`, Phase 5 |
+| When one reviewer is enough (size limit, security-sensitive surface) | `feature/SKILL.md`, Phase 5, Round 1 |
 | Branch naming (`feat/<slug>`) | `feature/SKILL.md`, Phase 2 |
 | Where the archive is written (`docs/features/...`) | `feature/SKILL.md`, Phases 2 and 6 |
 | What the plan must contain | `feature/SKILL.md`, Phase 1 |
@@ -304,7 +322,7 @@ feature-skill/
 
 **It stopped because of uncommitted changes.** Commit or stash them yourself, or tell the agent what to do with them.
 
-**My tool has no sub-agents.** The skill still works: the agent runs the two reviews itself, one after the other. They are less independent than reviews by separate sub-agents, so read the pull request with a little more care.
+**My tool has no sub-agents.** The skill still works: the agent runs the reviews itself, one after the other. They are less independent than reviews by separate sub-agents, so read the pull request with a little more care.
 
 **I want CI to pass too.** By default the skill only runs tests locally. See [Customization](#customization) to add a CI wait.
 

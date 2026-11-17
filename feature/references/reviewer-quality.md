@@ -5,10 +5,10 @@ You are a senior engineer reviewing a pull request written by someone else. You 
 ## Inputs
 
 - The approved plan: `docs/features/<date>-<slug>/plan.md`
-- The change: `git diff <default>...HEAD`
-- From round 2 on: the findings of the previous round
+- Round 1: the whole change, `git diff <default>...HEAD`
+- From round 2 on: only the fixes, `git diff <reviewed>..HEAD`, and the previous round's `Quality` findings. If this is your first review of this change, you get the whole change and the `Quality` findings of every earlier round instead; review it as in round 1, then report the status of those findings.
 
-Read the whole diff and the plan. Open the surrounding files whenever you need them to judge the change. Do not edit any file.
+Read the whole diff you were given and the plan. Open other files only when you need them to judge the change, such as a direct caller; read just the parts you need. From round 2 on you may open the full contents of every file the fix diff touches. Do not edit any file.
 
 ## What to look for
 
@@ -25,11 +25,13 @@ Only report issues in this change. Each finding must point at a specific line an
 
 ## From round 2 on
 
-For each previous finding, state whether it is fixed, partly fixed, or not fixed. Then review the new changes as carefully as the original ones: fixes introduce bugs too.
+For each previous finding, state in one line whether it is fixed, partly fixed, or not fixed. Then review the fix diff as carefully as the original change: fixes introduce bugs too. Read each touched file in full to check that the fix fits the code around it. Re-check only the acceptance criteria the fixes could affect.
 
 ## Output format
 
-Start with one line per acceptance criterion: `met`, `partly met`, or `not met`, with a short reason.
+Output only the lines and findings below. Do not restate the code, summarize the change, or explain what you checked and found clean.
+
+In round 1, start with one line per acceptance criterion: `met`, `partly met`, or `not met`, with a short reason. From round 2 on, list only the criteria the fixes could affect.
 
 Then list findings from most to least severe:
 

@@ -1,6 +1,6 @@
 ---
 name: feature
-description: Deliver a feature end to end - plan, wait for the user's approval, implement on a new branch cut from the default branch, write tests, open a pull request, run two independent senior-engineer reviews (security and quality), fix and re-review, push, demo the result, and archive the plan and implementation notes under docs/. Use when the user invokes /feature or $feature, or asks to build a feature with the full plan-to-PR workflow. Do not use for quick edits, questions, or one-line fixes.
+description: Deliver a feature end to end - plan, wait for the user's approval, implement on a new branch cut from the default branch, write tests, open a pull request, run independent senior-engineer reviews (security and quality), fix and re-review, push, demo the result, and archive the plan and implementation notes under docs/. Use when the user invokes /feature or $feature, or asks to build a feature with the full plan-to-PR workflow. Do not use for quick edits, questions, or one-line fixes.
 ---
 
 # Feature
@@ -24,7 +24,7 @@ Check these before anything else. If one fails, stop and tell the user what is m
 
 Do not create, edit or delete any file in this phase.
 
-1. Read the relevant code: how the project is structured, its conventions, how it is tested, and what already exists that the feature can reuse.
+1. Read the relevant code: how the project is structured, its conventions, how it is tested, and what already exists that the feature can reuse. Read what the feature touches or depends on, plus one or two existing tests as a pattern. To find code to reuse, search the codebase (for example with grep) for related names and helpers, and open only the hits that look relevant. Do not read the whole repository.
 2. Present a plan containing:
    - **Goal** and **acceptance criteria** (observable, checkable statements)
    - **Approach** and the files to add or change
@@ -48,7 +48,7 @@ Do not create, edit or delete any file in this phase.
 ## Phase 3 - Tests
 
 1. Write tests with the project's existing test framework. Cover every acceptance criterion and the edge cases from the plan, including failure paths.
-2. Run the full local test suite, plus the project's lint and type checks if it has them.
+2. Run the full local test suite, plus the project's lint and type checks if it has them. Use the runner's quiet or summary mode where it has one, and keep only the summary and the failures, not the full log.
 3. Do not continue until everything passes. Fix the code, not the tests, unless a test is wrong. Never delete, skip or weaken a test to get a green run.
 
 ## Phase 4 - Open the pull request
@@ -63,29 +63,70 @@ Do not create, edit or delete any file in this phase.
 
 ## Phase 5 - Review loop (at most 3 rounds)
 
-Each round runs two independent reviews of `git diff <default>...HEAD`:
+The reviews use two instruction files:
 
-- **Reviewer A - security**: use `references/reviewer-security.md`
-- **Reviewer B - correctness and quality**: use `references/reviewer-quality.md`
+- **Reviewer A - security**: `references/reviewer-security.md`
+- **Reviewer B - correctness and quality**: `references/reviewer-quality.md`
 
-How to run them:
+### Round 1 - review the whole change
 
-- If your environment supports sub-agents, start both at the same time, each with a fresh context. Give each one its reference file as instructions, the path to `plan.md`, the diff command, and (from round 2 on) the findings of the previous round. Reviewers only read; they never edit files.
-- If it does not, perform the two reviews yourself, one after the other. For each, re-read the whole diff from scratch and follow the reference file strictly. Do not rely on what you remember from writing the code.
+Record the commit you are reviewing (`git rev-parse HEAD`); call it `<reviewed>`. Measure the size of the production code change: run `git diff --numstat <default>...HEAD -- . ':!docs/features'` and add up the added and removed lines, leaving out test files, lock files and generated files. Then pick one of two modes:
 
-After both reviews return:
+- **Single reviewer** - fewer than about 200 production lines changed **and** no security-sensitive surface touched. Run one review that follows both reference files: the security checks first, then the correctness and quality checks, with each finding labelled `Security` or `Quality`.
+- **Two reviewers** - everything else. Run Reviewer A and Reviewer B separately.
+
+Security-sensitive surface means:
+
+- authentication, authorization, or which user's data a request can read or change
+- parsing or validating outside input
+- rendering user-supplied content (HTML, templates, anything a browser interprets) and redirects
+- file system, network, shell or database access
+- secrets, credentials, logging, and error messages shown to users
+- cryptography or sessions
+- dependencies, including any change to a dependency manifest or lock file
+- security-related configuration (permissions, CORS, cookies, debug flags)
+
+When unsure, treat it as security-sensitive.
+
+The input for round 1 is `git diff <default>...HEAD` and the path to `plan.md`.
+
+### Round 2 and 3 - review only the fixes
+
+Inputs for a reviewer that already ran on its own in an earlier round:
+
+- The fix diff `git diff <reviewed>..HEAD`, its own category of the previous round's findings (`Security` for Reviewer A, `Quality` for Reviewer B, both for the single reviewer), and the path to `plan.md`. Do not send the whole branch diff again.
+- The reviewer may open the **full contents of every file the fix diff touches**, to check how the fix interacts with the code around it. Other files are opened only when needed, for example a direct caller.
+
+A reviewer that has not yet run on its own (forced in by the rules below, or created by splitting the single reviewer) gets the **whole branch diff** `git diff <default>...HEAD` instead, plus the findings of its category from every earlier round.
+
+Which reviewers run:
+
+- **Reviewer A** runs if the previous round had a confirmed Critical, High or Medium `Security` finding, or if the fix diff touches security-sensitive surface.
+- **Reviewer B** runs if the previous round had a confirmed Critical, High or Medium `Quality` finding, or if the fix diff changes anything other than tests and docs. Every fix to production code therefore gets a correctness review.
+- **Single-reviewer mode** stays single only while the fix diff touches no security-sensitive surface; then the single reviewer reruns. Otherwise switch to Reviewer A and Reviewer B for the rest of the loop, applying the two rules above.
+
+After building a round's input, set `<reviewed>` to the current `HEAD`, so the next round sees only what changed after this one.
+
+### How to run a review
+
+- If your environment supports sub-agents, start each reviewer with a fresh context and, when there are two, at the same time. Give each one its reference file (both files for the single reviewer) as instructions, plus the inputs for the round. Reviewers only read; they never edit files.
+- If it does not, perform the reviews yourself, one after the other. For each, re-read that round's diff from scratch and follow the reference file strictly. Do not rely on what you remember from writing the code.
+
+### After the reviews return
 
 1. Verify every finding against the code. If a finding is wrong, record why; do not silently drop it.
 2. Fix every confirmed Critical, High and Medium finding. Fix Low findings when the fix is cheap and safe; otherwise record them.
-3. Add or update tests for what you fixed, rerun the full local test suite, and commit.
+3. Add or update tests for what you fixed. Run the tests for the changed files and the tests of their direct callers (find callers by searching for the changed symbols), plus lint and type checks on the changed files if the project has them. If the test runner cannot select tests by file, or you cannot tell which tests cover the change, run the full suite instead. Keep only the summary and the failures. Then commit. The full suite runs once more in Phase 6.
 4. Run the next round so the fixes themselves get reviewed.
 
-Stop the loop when a round ends with no confirmed Critical, High or Medium finding from either reviewer. If round 3 still leaves such findings, stop the whole workflow, list what remains, and let the user decide. Do not start a fourth round on your own.
+Stop the loop when a round ends with no confirmed Critical, High or Medium finding from any reviewer that ran. If round 3 still leaves such findings, stop the whole workflow, list what remains, and let the user decide. Do not start a fourth round on your own.
 
 ## Phase 6 - Archive and final push
 
-1. Write `docs/features/<YYYY-MM-DD>-<slug>/implementation.md` using the template in `references/docs-templates.md`: how the feature works, key decisions, files changed, deviations from the plan, the findings of each review round and how each was handled, test results, and manual verification steps.
-2. Run the full local test suite one last time. If anything fails, fix it and rerun. Never push with failing tests.
+1. Write `docs/features/<YYYY-MM-DD>-<slug>/implementation.md` using the template in `references/docs-templates.md`: how the feature works, key decisions, files changed, deviations from the plan, the findings of each review round and how each was handled, test results, and manual verification steps. Log each finding as one table row; do not paste the reviewers' text.
+2. Run the full local test suite one last time, in quiet or summary mode, keeping only the summary and the failures. If anything fails, fix it and rerun. Never push with failing tests.
+   - If the fix changes production code (not only tests), commit it and review it before pushing: run one more round of Phase 5 on the fix diff since the last `<reviewed>` commit, with the same rules for which reviewers run. This round counts toward the limit of 3; if the limit is already used up, stop, show the fix, and let the user decide.
+   - Add the result to the review log in `implementation.md`.
 3. Commit, push, and mark the pull request ready:
    ```bash
    git push
@@ -95,12 +136,12 @@ Stop the loop when a round ends with no confirmed Critical, High or Medium findi
 
 ## Phase 7 - Show the result
 
-1. Make the result visible so the user can check it with their own eyes. For something with a UI, start the app and open the relevant page, or capture screenshots. For a CLI, library or backend, run it and show the real output. If you cannot run it in your environment, give the exact commands and the address to open.
-2. Finish with a report:
+1. Make the result visible so the user can check it with their own eyes. For something with a UI, start the app and open the relevant page; check it by reading the page as text where you can, and capture at most one screenshot. For a CLI, library or backend, run it and show the real output, trimmed to the part that shows the feature. If you cannot run it in your environment, give the exact commands and the address to open.
+2. Finish with a short report, a few lines per item:
    - Link to the pull request
    - How the feature was implemented, in plain language
    - Test results (what was run, and the outcome)
-   - Review summary: number of rounds, what was found, what was fixed, anything left open
+   - Review summary: number of rounds, single or two reviewers, what was found, what was fixed, anything left open
    - Steps for the user to test it manually
    - Edge cases worth keeping in mind
    - Paths to `plan.md` and `implementation.md`
