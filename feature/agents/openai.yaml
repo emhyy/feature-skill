@@ -1,0 +1,3 @@
+interface:
+  display_name: "Feature"
+  short_description: "Plan, build, review and ship a feature as a pull request"
