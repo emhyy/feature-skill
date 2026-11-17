@@ -60,12 +60,20 @@ Both files live in `docs/features/<YYYY-MM-DD>-<slug>/`, where the date is the d
 - <What differs from plan.md, and why. "None" if nothing.>
 
 ## Review log
+<One row per finding, in your own words; do not paste the reviewers' text.>
+
 ### Round 1
+- Mode: <single reviewer / two reviewers>
+- Reviewed: whole change at <commit>
+
 | Reviewer | Severity | Finding | Resolution |
 |---|---|---|---|
 | Security | High | <finding> | Fixed in <commit> / Rejected: <reason> / Deferred: <reason> |
 
 ### Round 2
+- Reviewers run: <Security / Quality / single>
+- Reviewed: fixes since <commit>
+
 <Same table. Add one section per round.>
 
 ## Tests
