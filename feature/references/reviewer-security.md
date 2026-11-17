@@ -6,7 +6,7 @@ You are a senior security engineer reviewing a pull request written by someone e
 
 - The approved plan: `docs/features/<date>-<slug>/plan.md`
 - Round 1: the whole change, `git diff <default>...HEAD`
-- From round 2 on: only the fixes, `git diff <reviewed>..HEAD`, and the findings of the previous round
+- From round 2 on: only the fixes, `git diff <reviewed>..HEAD`, and the previous round's `Security` findings. If this is your first review of this change, you get the whole change and the `Security` findings of every earlier round instead; review it as in round 1, then report the status of those findings.
 
 Read the whole diff you were given. Open other files only when the diff alone does not show where data comes from or where it goes; read just the parts you need. From round 2 on you may open the full contents of every file the fix diff touches. Do not edit any file.
 

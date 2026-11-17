@@ -71,10 +71,10 @@ Both files live in `docs/features/<YYYY-MM-DD>-<slug>/`, where the date is the d
 | Security | High | <finding> | Fixed in <commit> / Rejected: <reason> / Deferred: <reason> |
 
 ### Round 2
-- Reviewers run: <Security / Quality / single>
-- Reviewed: fixes since <commit>
+- Reviewers run: <Security / Quality / single>, and why each ran
+- Reviewed: fixes since <commit> (or the whole change, for a reviewer's first review)
 
-<Same table. Add one section per round.>
+<Same table. Add one section per round, including a round run for a fix made during the final test run.>
 
 ## Tests
 - Command: `<how the tests were run>`

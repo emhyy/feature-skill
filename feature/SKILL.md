@@ -24,7 +24,7 @@ Check these before anything else. If one fails, stop and tell the user what is m
 
 Do not create, edit or delete any file in this phase.
 
-1. Read the relevant code: how the project is structured, its conventions, how it is tested, and what already exists that the feature can reuse. Read only what the feature touches or depends on, plus one or two existing tests as a pattern; do not read the whole repository.
+1. Read the relevant code: how the project is structured, its conventions, how it is tested, and what already exists that the feature can reuse. Read what the feature touches or depends on, plus one or two existing tests as a pattern. To find code to reuse, search the codebase (for example with grep) for related names and helpers, and open only the hits that look relevant. Do not read the whole repository.
 2. Present a plan containing:
    - **Goal** and **acceptance criteria** (observable, checkable statements)
    - **Approach** and the files to add or change
@@ -70,21 +70,42 @@ The reviews use two instruction files:
 
 ### Round 1 - review the whole change
 
-Record the commit you are reviewing (`git rev-parse HEAD`); call it `<reviewed>`. Check the size of the change with `git diff --shortstat <default>...HEAD`, then pick one of two modes:
+Record the commit you are reviewing (`git rev-parse HEAD`); call it `<reviewed>`. Measure the size of the production code change: run `git diff --numstat <default>...HEAD -- . ':!docs/features'` and add up the added and removed lines, leaving out test files, lock files and generated files. Then pick one of two modes:
 
-- **Single reviewer** - the change adds and removes fewer than about 200 lines in total **and** touches no security-sensitive surface. Run one review that follows both reference files: the security checks first, then the correctness and quality checks, with each finding labelled `Security` or `Quality`.
+- **Single reviewer** - fewer than about 200 production lines changed **and** no security-sensitive surface touched. Run one review that follows both reference files: the security checks first, then the correctness and quality checks, with each finding labelled `Security` or `Quality`.
 - **Two reviewers** - everything else. Run Reviewer A and Reviewer B separately.
 
-Security-sensitive surface means: authentication or authorization, parsing or validating outside input, file system, network, shell or database access, secrets or credentials, cryptography or sessions, dependencies, and security-related configuration (permissions, CORS, cookies, debug flags). When unsure, use two reviewers.
+Security-sensitive surface means:
+
+- authentication, authorization, or which user's data a request can read or change
+- parsing or validating outside input
+- rendering user-supplied content (HTML, templates, anything a browser interprets) and redirects
+- file system, network, shell or database access
+- secrets, credentials, logging, and error messages shown to users
+- cryptography or sessions
+- dependencies, including any change to a dependency manifest or lock file
+- security-related configuration (permissions, CORS, cookies, debug flags)
+
+When unsure, treat it as security-sensitive.
 
 The input for round 1 is `git diff <default>...HEAD` and the path to `plan.md`.
 
 ### Round 2 and 3 - review only the fixes
 
-- The input is the fix diff `git diff <reviewed>..HEAD`, the previous round's findings, and the path to `plan.md`. Do not send the whole branch diff again.
+Inputs for a reviewer that already ran on its own in an earlier round:
+
+- The fix diff `git diff <reviewed>..HEAD`, its own category of the previous round's findings (`Security` for Reviewer A, `Quality` for Reviewer B, both for the single reviewer), and the path to `plan.md`. Do not send the whole branch diff again.
 - The reviewer may open the **full contents of every file the fix diff touches**, to check how the fix interacts with the code around it. Other files are opened only when needed, for example a direct caller.
-- Rerun only the reviewer whose previous round had a confirmed Critical, High or Medium finding. Exception: if the fix diff touches security-sensitive surface, Reviewer A always runs, even if it was clean before. In single-reviewer mode, rerun the single reviewer; if the fix diff touches security-sensitive surface, run Reviewer A and Reviewer B separately instead.
-- After building a round's input, set `<reviewed>` to the current `HEAD`, so the next round sees only what changed after this one.
+
+A reviewer that has not yet run on its own (forced in by the rules below, or created by splitting the single reviewer) gets the **whole branch diff** `git diff <default>...HEAD` instead, plus the findings of its category from every earlier round.
+
+Which reviewers run:
+
+- **Reviewer A** runs if the previous round had a confirmed Critical, High or Medium `Security` finding, or if the fix diff touches security-sensitive surface.
+- **Reviewer B** runs if the previous round had a confirmed Critical, High or Medium `Quality` finding, or if the fix diff changes anything other than tests and docs. Every fix to production code therefore gets a correctness review.
+- **Single-reviewer mode** stays single only while the fix diff touches no security-sensitive surface; then the single reviewer reruns. Otherwise switch to Reviewer A and Reviewer B for the rest of the loop, applying the two rules above.
+
+After building a round's input, set `<reviewed>` to the current `HEAD`, so the next round sees only what changed after this one.
 
 ### How to run a review
 
@@ -95,7 +116,7 @@ The input for round 1 is `git diff <default>...HEAD` and the path to `plan.md`.
 
 1. Verify every finding against the code. If a finding is wrong, record why; do not silently drop it.
 2. Fix every confirmed Critical, High and Medium finding. Fix Low findings when the fix is cheap and safe; otherwise record them.
-3. Add or update tests for what you fixed. Run only the tests that cover the changed code (and lint and type checks on the changed files, if the project has them), then commit. The full suite runs once more in Phase 6.
+3. Add or update tests for what you fixed. Run the tests for the changed files and the tests of their direct callers (find callers by searching for the changed symbols), plus lint and type checks on the changed files if the project has them. If the test runner cannot select tests by file, or you cannot tell which tests cover the change, run the full suite instead. Keep only the summary and the failures. Then commit. The full suite runs once more in Phase 6.
 4. Run the next round so the fixes themselves get reviewed.
 
 Stop the loop when a round ends with no confirmed Critical, High or Medium finding from any reviewer that ran. If round 3 still leaves such findings, stop the whole workflow, list what remains, and let the user decide. Do not start a fourth round on your own.
@@ -103,7 +124,9 @@ Stop the loop when a round ends with no confirmed Critical, High or Medium findi
 ## Phase 6 - Archive and final push
 
 1. Write `docs/features/<YYYY-MM-DD>-<slug>/implementation.md` using the template in `references/docs-templates.md`: how the feature works, key decisions, files changed, deviations from the plan, the findings of each review round and how each was handled, test results, and manual verification steps. Log each finding as one table row; do not paste the reviewers' text.
-2. Run the full local test suite one last time. If anything fails, fix it and rerun. Never push with failing tests.
+2. Run the full local test suite one last time, in quiet or summary mode, keeping only the summary and the failures. If anything fails, fix it and rerun. Never push with failing tests.
+   - If the fix changes production code (not only tests), commit it and review it before pushing: run one more round of Phase 5 on the fix diff since the last `<reviewed>` commit, with the same rules for which reviewers run. This round counts toward the limit of 3; if the limit is already used up, stop, show the fix, and let the user decide.
+   - Add the result to the review log in `implementation.md`.
 3. Commit, push, and mark the pull request ready:
    ```bash
    git push

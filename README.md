@@ -220,7 +220,7 @@ The reviews are written from the point of view of a senior engineer who did not 
 
 **Round 1 reviews the whole branch diff.** How many reviewers run depends on the change:
 
-- **One reviewer** that applies both checklists, when the change is under about 200 added and removed lines **and** touches nothing security-sensitive (authentication or authorization, outside input, file system, network, shell or database access, secrets, cryptography or sessions, dependencies, security-related configuration).
+- **One reviewer** that applies both checklists, when under about 200 lines of production code changed (plan, tests, lock files and generated files are not counted) **and** nothing security-sensitive is touched: authentication, authorization or per-user data access, outside input, rendering user content and redirects, file system, network, shell or database access, secrets, logging and user-facing errors, cryptography or sessions, dependencies, security-related configuration.
 - **Two reviewers** in every other case, and whenever the agent is unsure.
 
 Findings are rated Critical, High, Medium or Low. The agent checks each finding, fixes every confirmed Critical, High and Medium one, runs the tests that cover the changed code, and starts another round so the fixes get reviewed too.
@@ -228,9 +228,13 @@ Findings are rated Critical, High, Medium or Low. The agent checks each finding,
 **Rounds 2 and 3 review only the fixes**, not the whole branch again:
 
 - The reviewer gets the diff since the last reviewed commit plus the previous findings, and may read every file that diff touches in full, so it can catch a fix that clashes with the code around it.
-- Only the reviewer that had confirmed findings runs again. If a fix touches security-sensitive code, the security reviewer always runs.
+- The security reviewer runs again if it had confirmed findings or the fix touches security-sensitive code. The quality reviewer runs again if it had confirmed findings or the fix changes any production code, so every code fix gets a correctness review.
+- A reviewer that joins for the first time (for example the security reviewer, once a fix touches security-sensitive code) reviews the whole branch, not just the fix.
+- Between rounds the agent runs the tests for the changed files and their direct callers, or the full suite when it cannot tell which tests apply.
 
-The loop ends when a round finds nothing at Medium or above. It runs **at most 3 rounds**. If problems remain after the third, the agent stops and lists them for you. The full test suite runs again before the final push.
+The loop ends when a round finds nothing at Medium or above. It runs **at most 3 rounds**. If problems remain after the third, the agent stops and lists them for you.
+
+The full test suite runs again before the final push. If that run needs a code fix, the fix goes through one more review round (counted toward the limit of 3) before it is pushed.
 
 In tools that support sub-agents, each reviewer runs with a fresh context (two reviewers run in parallel), so they see the code without the author's assumptions. Where sub-agents are not available, the agent performs the reviews itself, one after the other, re-reading that round's diff from scratch each time.
 
